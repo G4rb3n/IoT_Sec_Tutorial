@@ -1,6 +1,7 @@
 # 静态分析 IoT 固件
 
 得到固件后，若直接打开，会发现该固件被加了密，无法直接解压缩，这是厂商对该固件做了保护，防止大家逆向分析他的固件。
+
 ![1](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/1.png)
 
 通过frackzip工具可以破解该zip的密码，时间要挺久的，我直接告诉你吧，密码是beUT9Z。
