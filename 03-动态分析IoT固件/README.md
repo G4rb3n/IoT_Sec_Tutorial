@@ -83,7 +83,10 @@ info functions
 ```
 ![11](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/03-动态分析IoT固件/11.png)
 
-如果你感兴趣，可以使用disass main命令查反汇编看下main函数的汇编码，这是mips架构的汇编码，跟x86的相差很大，完全看不懂。。
+如果你感兴趣，可以使用命令查反汇编看下main函数的汇编码，这是mips架构的汇编码，跟x86的相差很大，完全看不懂。。
+```
+disass main
+```
 
 ![12](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/03-动态分析IoT固件/12.png)
 
@@ -101,7 +104,9 @@ sudo chroot . ./qemu-mipsel-static -g 1234 ./pwnable/Intro/stack_bof_01 aaaabaaa
 ![14](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/03-动态分析IoT固件/14.png)
 
 gdb挂上去后，输入c回车让程序跑起来，会发现程序崩溃了，SIGSEGV内存出错，指针ra指向0x63616162，对应的ASCII是”baac”。
+
 ![15](https://github.com/G4rb3n/IoT_Sec_Tutorial/blob/master/03-动态分析IoT固件/15.png)
+
 
 使用命令查看该溢出点在攻击字符串的什么位置，是位于pattern的第204位。
 ```
